@@ -141,7 +141,7 @@ public: BOOL CreateServerSocket(wchar_t* IPString, int port) {
     SOCKADDR* prtSOCKADDR = (SOCKADDR*)&service;
     wchar_t IPString2[20];
     wchar_t PortString2[20];
-    socketadress_to_string(prtSOCKADDR, IPString2, PortString2);
+    socketaddress_to_string(prtSOCKADDR, IPString2, PortString2);
     iResult = bind(SocketArray[ServerIndex], (SOCKADDR*)&service, sizeof(service));
     if (iResult == SOCKET_ERROR) {
         lastWSAError = WSAGetLastError();
@@ -402,12 +402,12 @@ public:BOOL SendText(unsigned int socketIndex, char* text, int textLen) {
 /// <param name="IPString">buffer where the ip will be stored</param>
 /// <param name="PortString">buffer where the port will be stored</param>
 /// <returns>Puntero a IPString</returns>
-public: static wchar_t* socketadress_to_string(sockaddr* address, wchar_t* IPString, wchar_t* PortString) {
+public: static wchar_t* socketaddress_to_string(sockaddr* address, wchar_t* IPString, wchar_t* PortString) {
     int source = 0, dest = 0;
     wchar_t byte_string[4] = { 0 };
     wchar_t word_string[6] = { 0 };
     for (int nByte = 2; nByte < 6; nByte++) {
-        _itow_s(address->sa_data[nByte], byte_string, 10);
+        _itow_s((unsigned char)address->sa_data[nByte], byte_string, 10);
         source = 0;
         while (byte_string[source] != 0)
         {

@@ -285,7 +285,7 @@ void UpdateUI(HWND hwnd, HDC hdc, const wchar_t* message) {
             break;
         }
         SetWindowText(clientControl[index]->hwnd2_Status, text);
-        WSA_non_blocking::socketadress_to_string(&WSAnb.AddressArray[index], ip_wchar, port_wchar);
+        WSA_non_blocking::socketaddress_to_string(&WSAnb.AddressArray[index], ip_wchar, port_wchar);
 
         SetWindowText(clientControl[index]->hwnd3_IP, ip_wchar);
         SetWindowText(clientControl[index]->hwnd4_Port, port_wchar);
