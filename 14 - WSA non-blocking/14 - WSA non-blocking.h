@@ -14,7 +14,20 @@ class WSA_non_blocking {
 public: enum class STATE { NONE,CONNECTED,LISTENING, REQUESTING};
 public:STATE status = STATE::NONE;
 public:BOOL bConnected = FALSE;
+//******************************* AVALIABLE IP's *****************************************
+
+#define WSS_IP_STRING_SIZE 256
+static int const        MAX_SERVICENAME_LENGHT = 256;
+public: static const int MAX_IP_ADRESSES = 10;
+//protected: wchar_t      ip_client_string[WSS_IP_STRING_SIZE];
+//public: wchar_t* getIP_string(wchar_t* buffer) {
+//    lstrcpyW(buffer, ip_client_string);
+//    return buffer;
+//}
+protected: int          IP_Adresses_avaliables = 0;
+protected: wchar_t IP_Avaliable[MAX_IP_ADRESSES][MAX_SERVICENAME_LENGHT];
 //****************************** SOCKET ****************************************************
+protected: BOOL         WSAIniciated = FALSE;
 public:static const int IPString_Lenght = 50;
 public:      wchar_t IPString[IPString_Lenght] = { 0 };
 public:      wchar_t PortString[IPString_Lenght] = { 0 };
@@ -70,6 +83,124 @@ void XTrace(LPCTSTR lpszFormat, ...)
 }
 
 /// <summary>
+/// Empieza haciendo una llamada a WSAStartup() lo que inicializa el sistema WinsockDLL de windows.
+/// Inmediatamente llama a GetAddrInfoW() para hacer recibir un listado de las IP disponibles
+/// Las IP's son guardadas en el arreglo privado ipstringbuffer[]
+/// </summary>
+/// <returns>WSAError code</returns>
+public: int GetIPList(ADDRINFOW** resultReturned) {
+
+    ADDRINFOW* resultReturnedI = *resultReturned;
+    ADDRINFOW 	hints;
+    // Initialize Winsock**************************************************************************************
+    lastWSAError = 0;
+    wchar_t ComputerName[MAX_COMPUTERNAME_LENGTH + 1] = { 0 };	//Obnener el nombre de la computadora
+    wchar_t ServiceName[MAX_SERVICENAME_LENGHT] = { 0 };
+    DWORD bufCharCount = 0;
+    wchar_t comodin[256], comodin2[256];
+    int iResult = 0;
+    const wchar_t* s;
+    //Obtener el IP de la computadora
+    LPSOCKADDR sockaddr_ip;
+    ADDRINFOW* ptr = NULL;
+    ADDRINFOW* result = NULL;
+
+    INT iRetval;
+    wchar_t ipstringbuffer[46];
+    DWORD ipbufferlength = 46;
+
+
+    // Obtiene el nombre de la computadora, necesario para la 
+    //funcion GetAddrInfoW()
+    ComputerName[0] = 0;
+    bufCharCount = MAX_COMPUTERNAME_LENGTH + 1;
+    if (!GetComputerNameW(ComputerName, &bufCharCount))
+    {
+        lastWSAError = GetLastError();
+        XTrace(L"GetComputerName failed: %s", WindowsErrorToString(lastWSAError));
+    }
+
+    if (!WSAIniciated)
+    {
+        //Inicializa el sistema de sockets de windows
+        lastWSAError = WSAStartup(MAKEWORD(2, 2), &wsaData);
+        if (lastWSAError != 0) {
+            XTrace(L"WSAStartup failed: %s", WindowsErrorToString(lastWSAError));
+            return lastWSAError;
+        }
+        WSAIniciated = true;
+        XTrace(s = L"WSAStartup() success");
+    }
+    //Obtiene un listado de las direcciones IP**********************************************************************************
+
+    ZeroMemory(&hints, sizeof(hints));
+    ZeroMemory(&ServiceName, MAX_SERVICENAME_LENGHT);
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    hints.ai_flags = AI_PASSIVE;
+
+
+    wcscpy_s(ComputerName, L"");
+    lastWSAError = GetAddrInfoW(
+        ComputerName,
+        ServiceName,
+        &hints,
+        &result);
+    if (lastWSAError != 0) {
+        XTrace(L"getaddrinfo failed: %s", WindowsErrorToString(lastWSAError));
+        WSACleanup();
+        return lastWSAError;
+    }
+    XTrace(L"getaddrinfo() success");
+    *resultReturned = result;
+    // Retrieve each address and print out the hex bytes
+    for (ptr = result; ptr != NULL; ptr = ptr->ai_next)
+    {
+        switch (ptr->ai_family) {
+        case AF_UNSPEC:
+            break;
+        case AF_INET:
+        {
+            sockaddr_ip = (LPSOCKADDR)ptr->ai_addr;
+            // The buffer length is changed by each call to WSAAddresstoString
+            // So we need to set it for each iteration through the loop for safety
+            ipbufferlength = 46;
+            iRetval = WSAAddressToStringW(sockaddr_ip, (DWORD)ptr->ai_addrlen, NULL,
+                ipstringbuffer, &ipbufferlength);
+            if (iRetval)
+                XTrace(L"WSAAddressToString failed with ", WSAGetLastError());
+            else
+            {
+                SaveIpAddress(ipstringbuffer);
+                break;
+            }
+        }
+        }
+    }
+}
+      /// <summary>
+/// Guarda la IP en formato string en el arreglo interno IP[]. Permite un numero máximo de IP's= MAX_IP_ADRESSES
+/// </summary>
+/// <param name="newIpAddress">IP en formato String</param>
+protected: void SaveIpAddress(wchar_t* newIpAddress)
+{
+    if (newIpAddress)
+    {
+        if (IP_Adresses_avaliables < MAX_IP_ADRESSES)
+        {
+            lstrcpyW(IP_Avaliable[IP_Adresses_avaliables], newIpAddress);
+
+            IP_Adresses_avaliables++;
+        }
+        else
+        {
+            XTrace(L"Maximun number of allowed IP's reached.\n");
+            XTrace(L"Discarting:\n", newIpAddress);
+        }
+    }
+}
+/// <summary>
 /// Initialize SERVER.
 /// Initialize WSA subsystem.
 /// Initializes Server Socket and listens to requesting clients
@@ -96,7 +227,10 @@ public: BOOL CreateServerSocket(wchar_t* IPString, int port) {
         XTrace(L"WSAStartup failed: %d. %s\n", lastWSAError, WindowsErrorToString(lastWSAError));
         return FALSE;
     }
+
+    WSAIniciated = TRUE;
     // Create socket****************************************************************
+    closesocket(SocketArray[ServerIndex]);
     SocketArray[ServerIndex] = socket(iFamily, iType, iProtocol);
     if (SocketArray[ServerIndex] == INVALID_SOCKET)
     {
