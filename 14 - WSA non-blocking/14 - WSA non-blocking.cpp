@@ -41,9 +41,10 @@ HWND                InitInstance( int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM); 
 void                UpdateUI(HWND , HDC , const wchar_t* );
-int Ini_WSA_non_blocking(HWND);
-void XTrace(LPCTSTR lpszFormat, ...);
-void XTrace0(LPCTSTR lpszText);
+int                 Ini_WSA_non_blocking(HWND);
+void                XTrace(LPCTSTR lpszFormat, ...);
+void                XTrace0(LPCTSTR lpszText);
+wchar_t*            MessageFormated(wchar_t* bufferReturned, LPCTSTR lpszFormat, ...);
 
 /// <summary>
 /// App entry point
@@ -64,10 +65,31 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     // Window Initialization
     HWND hwnd = InitInstance( nCmdShow);
-    if (!hwnd) return FALSE;
+    
+    if (!hwnd) {
+        MessageBox(NULL,
+            L"CreateWindowW() or UpdateWindow() has returned error.\rUnknow reasson.",
+            L"ERROR. Main Window can not be created.",
+            MB_OK| MB_ICONERROR);
+        return FALSE;
+    }
 
     //SOCKET initialization
-    if (!Ini_WSA_non_blocking(hwnd))return FALSE;
+    if (!Ini_WSA_non_blocking(hwnd))
+    {
+
+        TCHAR szMessageFormatedBuffer[512];
+        wchar_t ErrorMessage1[] = L"";
+        MessageFormated(szMessageFormatedBuffer,
+            L"Error al inicializar el socket servidor.\rCodigo de error:%u = %s",
+            WSAnb.lastWSAError,
+            WSAnb.WindowsErrorToString(WSAnb.lastWSAError));
+        MessageBox(NULL,
+            szMessageFormatedBuffer,
+            L"ERROR\n",
+            MB_OK | MB_ICONERROR);
+        return FALSE;
+    }
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_MY14WSANONBLOCKING));
 
@@ -448,4 +470,22 @@ void XTrace(LPCTSTR lpszFormat, ...)
     nBuf = _vstprintf_s(szBuffer, 511, lpszFormat, args);
     ::OutputDebugString(szBuffer);
     va_end(args);
+}
+
+/// <summary>
+/// printf() style messaging
+/// https://stackoverflow.com/questions/15240/
+/// </summary>
+/// <param name="bufferReturned">pointer to a 512 WORDs array </param>
+/// <param name="lpszFormat">-Debugging text</param>
+/// <param name="">.... parameters in _vstprintf_s() style</param>
+wchar_t* MessageFormated(wchar_t* bufferReturned, LPCTSTR lpszFormat, ...)
+{
+    va_list args;
+    va_start(args, lpszFormat);
+    int nBuf;
+    nBuf = _vstprintf_s(bufferReturned, 511, lpszFormat, args);
+    //::OutputDebugString(szBuffer);
+    va_end(args);
+    return bufferReturned;
 }

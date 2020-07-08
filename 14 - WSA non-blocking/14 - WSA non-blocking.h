@@ -11,7 +11,7 @@
 
 class WSA_non_blocking {
 //********************************* STATE *************************************************
-public: enum class STATE { NONE,CONNECTED,LISTENING, REQUESTING};
+public: enum class STATE { NONE,CONNECTED,LISTENING, REQUESTING,ERROR_DETECTED};
 public:STATE status = STATE::NONE;
 public:BOOL bConnected = FALSE;
 //******************************* AVALIABLE IP's *****************************************
@@ -83,11 +83,29 @@ void XTrace(LPCTSTR lpszFormat, ...)
 }
 
 /// <summary>
+/// printf() style messaging
+/// https://stackoverflow.com/questions/15240/
+/// </summary>
+/// <param name="bufferReturned">pointer to a 512 WORDs array </param>
+/// <param name="lpszFormat">-Debugging text</param>
+/// <param name="">.... parameters in _vstprintf_s() style</param>
+wchar_t* MessageFormated(wchar_t* bufferReturned, LPCTSTR lpszFormat, ...)
+{
+    va_list args;
+    va_start(args, lpszFormat);
+    int nBuf;
+    nBuf = _vstprintf_s(bufferReturned, 511, lpszFormat, args);
+    //::OutputDebugString(szBuffer);
+    va_end(args);
+    return bufferReturned;
+}
+/// <summary>
 /// Empieza haciendo una llamada a WSAStartup() lo que inicializa el sistema WinsockDLL de windows.
 /// Inmediatamente llama a GetAddrInfoW() para hacer recibir un listado de las IP disponibles
 /// Las IP's son guardadas en el arreglo privado ipstringbuffer[]
 /// </summary>
-/// <returns>WSAError code</returns>
+/// <returns>WSAError code
+/// this function does not alter the content of "status"</returns>
 public: int GetIPList(ADDRINFOW** resultReturned) {
 
     ADDRINFOW* resultReturnedI = *resultReturned;
@@ -126,6 +144,7 @@ public: int GetIPList(ADDRINFOW** resultReturned) {
         lastWSAError = WSAStartup(MAKEWORD(2, 2), &wsaData);
         if (lastWSAError != 0) {
             XTrace(L"WSAStartup failed: %s", WindowsErrorToString(lastWSAError));
+            status = STATE::ERROR_DETECTED;
             return lastWSAError;
         }
         WSAIniciated = true;
@@ -150,6 +169,7 @@ public: int GetIPList(ADDRINFOW** resultReturned) {
     if (lastWSAError != 0) {
         XTrace(L"getaddrinfo failed: %s", WindowsErrorToString(lastWSAError));
         WSACleanup();
+        status = STATE::ERROR_DETECTED;
         return lastWSAError;
     }
     XTrace(L"getaddrinfo() success");
@@ -208,7 +228,9 @@ protected: void SaveIpAddress(wchar_t* newIpAddress)
 /// </summary>
 /// <param name="IPString">Server IP</param>
 /// <param name="port">Server Port</param>
-/// <returns>True if succeed. FALSE if fails, lastWSAError saves the WSAGelLastError() value</returns>
+/// <returns>True if succeed. FALSE if fails, lastWSAError saves the WSAGelLastError() value
+/// this function does alter the content of "status" ERROR_DETECTED: if socket cannot be created
+/// status=LISTENING if has been created</returns>
 public: BOOL CreateServerSocket(wchar_t* IPString, int port) {
     lastWSAError = 0;
     // socket() data --------------------
@@ -225,6 +247,7 @@ public: BOOL CreateServerSocket(wchar_t* IPString, int port) {
     lastWSAError= WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (lastWSAError != 0) {
         XTrace(L"WSAStartup failed: %d. %s\n", lastWSAError, WindowsErrorToString(lastWSAError));
+        status = STATE::ERROR_DETECTED;
         return FALSE;
     }
 
@@ -236,6 +259,7 @@ public: BOOL CreateServerSocket(wchar_t* IPString, int port) {
     {
         lastWSAError = WSAGetLastError();
         XTrace(L"socket failed: %d. %s\n", lastWSAError, WindowsErrorToString(lastWSAError));
+        status = STATE::ERROR_DETECTED;
         return FALSE;
     }
     // Set non-blocking mode****************************************************************
@@ -252,20 +276,29 @@ public: BOOL CreateServerSocket(wchar_t* IPString, int port) {
     {
         lastWSAError = WSAGetLastError();
         XTrace(L"ioctlsocket failed: %d. %s\n", lastWSAError, WindowsErrorToString(lastWSAError));
+        status = STATE::ERROR_DETECTED;
         return FALSE;
     }
     // Bind the socket to a specific port of an IP adress***********************************
     if ((iResult = InetPton(AF_INET, IPString, &in_addr)) != 1) {
+        //The InetPton function returns a value of 0 if the pAddrBuf parameter points to a string
+        //that is not a valid IPv4 dotted - decimal string or a valid IPv6 address string.
+        //Otherwise, a value of - 1 is returned, and a specific error code can be retrieved by 
+        //calling the WSAGetLastError() for extended error information.
         if (iResult == 0) {
-            XTrace(L"ioctlsocket failed: IPString is not a valid IP");
+            //WSAEFAULT=The system detected an invalid pointer address.
+            lastWSAError = WSAEFAULT;
+            XTrace(L"InetPton failed: IPString is not a valid IP");
             closesocket(SocketArray[ServerIndex]);
             WSACleanup();
+            status = STATE::ERROR_DETECTED;
             return FALSE;
         }
         lastWSAError = WSAGetLastError();
-        XTrace(L"ioctlsocket failed: %d. %s\n", lastWSAError, WindowsErrorToString(lastWSAError));
+        XTrace(L"InetPton failed: %d. %s\n", lastWSAError, WindowsErrorToString(lastWSAError));
         closesocket(SocketArray[ServerIndex]);
         WSACleanup();
+        status = STATE::ERROR_DETECTED;
         return FALSE;
 
     }
@@ -282,6 +315,7 @@ public: BOOL CreateServerSocket(wchar_t* IPString, int port) {
         XTrace(L"bind failed: %d. %s\n", lastWSAError, WindowsErrorToString(lastWSAError));
         closesocket(SocketArray[ServerIndex]);
         WSACleanup();
+        status = STATE::ERROR_DETECTED;
         return FALSE;
     }
     //The IP and port received are saved in variables of the WSA_non_blocking object
@@ -298,6 +332,7 @@ public: BOOL CreateServerSocket(wchar_t* IPString, int port) {
         XTrace(L"WSAEventSelect failed: %d. %s\n", lastWSAError, WindowsErrorToString(lastWSAError));
         closesocket(SocketArray[ServerIndex]);
         WSACleanup();
+        status = STATE::ERROR_DETECTED;
         return FALSE;
     }
     // Listen *********************************************************************
@@ -307,6 +342,7 @@ public: BOOL CreateServerSocket(wchar_t* IPString, int port) {
         XTrace(L"listen failed: %d. %s\n", lastWSAError, WindowsErrorToString(lastWSAError));
         closesocket(SocketArray[ServerIndex]);
         WSACleanup();
+        status = STATE::ERROR_DETECTED;
         return FALSE;
     }
     XTrace(L"listen succeed\n");
@@ -327,6 +363,8 @@ public: BOOL CreateServerSocket(wchar_t* IPString, int port) {
 /// Returns one, if any event has been processed.
 /// Returns SOCKET_ERROR if there has been an error. 
 /// In case of error, lastWSAError stores the value returned by WSAGetLastError
+/// this function does not alter the content of "status"
+/// 
 ///</returns>
 public:int testForEvents() {
     lastWSAError = 0;
@@ -365,6 +403,7 @@ public:int testForEvents() {
     {
         lastWSAError = WSAGetLastError();
         XTrace(L"WSAEnumNetworkEvents() failed with error %u: %s\n", lastWSAError, WindowsErrorToString(lastWSAError));
+        
         return SOCKET_ERROR;
     }
     if (NetworkEvents.lNetworkEvents & FD_ACCEPT) {
@@ -514,7 +553,7 @@ protected:void FD_WRITE_response(int SocketArrayIndex) {
 public:BOOL SendText(unsigned int socketIndex, char* text, int textLen) {
     lastWSAError = 0;
     int bytesSend = 0;
-    if ((socketIndex>0)&&(socketIndex<ClientIndex)) {
+    if ((socketIndex > 0) && (socketIndex < ClientIndex)) {
         bytesSend = send(SocketArray[socketIndex], text, textLen, 0);
         if (bytesSend == SOCKET_ERROR) {
             lastWSAError = WSAGetLastError();

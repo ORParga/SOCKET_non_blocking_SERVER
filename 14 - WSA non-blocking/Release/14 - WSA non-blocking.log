@@ -1,0 +1,9 @@
+﻿  14 - WSA non-blocking.cpp
+E:\PROGRAMACION\C++\Comunications\14 - WSA non-blocking\14 - WSA non-blocking\14 - WSA non-blocking.h(118,27): warning C4101: 'comodin2': variable local sin referencia
+E:\PROGRAMACION\C++\Comunications\14 - WSA non-blocking\14 - WSA non-blocking\14 - WSA non-blocking.h(118,13): warning C4101: 'comodin': variable local sin referencia
+  Generando código
+  Previous IPDB not found, fall back to full compilation.
+E:\PROGRAMACION\C++\Comunications\14 - WSA non-blocking\14 - WSA non-blocking\14 - WSA non-blocking.h(201): warning C4715: 'WSA_non_blocking::GetIPList': no todas las rutas de acceso de control devuelven un valor
+  All 46 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Generación de código finalizada
+  14 - WSA non-blocking.vcxproj -> E:\PROGRAMACION\C++\Comunications\14 - WSA non-blocking\14 - WSA non-blocking\Release\14 - WSA non-blocking.exe
